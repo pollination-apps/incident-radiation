@@ -2,18 +2,35 @@
 
 Calculate the incident radiation on geometry.
 
+Such studies of incident radiation can be used to approximate the energy that can
+be collected from photovoltaic or solar thermal systems. They are also useful
+for evaluating the impact of a building's orientation on both energy use and the
+size/cost of cooling systems. For studies of photovoltaic potential or building
+energy use impact, a sky matrix from EPW radiation should be used. For studies
+of cooling system size/cost, a sky matrix derived from the STAT file's clear sky
+radiation should be used.
+
+NOTE THAT REFLECTIONS OF SOLAR ENERGY ARE NOT INCLUDED IN THE ANALYSIS
+PERFORMED BY THIS APP.
+
+Ground reflected irradiance is crudely accounted for by means of an emissive
+"ground hemisphere," which is like the sky dome hemisphere and is derived from
+the ground reflectance that is associated with the connected _sky_mtx. This
+means that including geometry that represents the ground surface will effectively
+block such crude ground reflection.
+
 ## Quickstart
 
 Install dependencies:
 
 ```console
-> pip install -r requirements.txt
+> pip install -r app/requirements.txt
 ```
 
 Start Streamlit
 
 ```console
-> streamlit run app.py
+> streamlit run app/app.py
 
   You can now view your Streamlit app in your browser.
 
