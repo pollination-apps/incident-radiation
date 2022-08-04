@@ -43,8 +43,8 @@ def main(platform):
         context_geo.extend(st.session_state.context_geo)
     run_simulation(
         st.session_state.target_folder, st.session_state.user_id,
-        st.session_state.sky_file_path,
-        st.session_state.run_period, st.session_state.high_sky_density,
+        st.session_state.sky_file_path, st.session_state.run_period,
+        st.session_state.high_sky_density, st.session_state.average_irradiance,
         st.session_state.simulation_geo, context_geo, offset_distance,
         st.session_state.ground_reflectance, st.session_state.north
     )
@@ -54,7 +54,8 @@ def main(platform):
         out_container = st.container()  # container to eventually hold the results
     display_results(
         platform, st.session_state.target_folder, st.session_state.user_id,
-        st.session_state.radiation_values, out_container
+        st.session_state.radiation_values, st.session_state.average_irradiance,
+        out_container
     )
 
 

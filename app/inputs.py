@@ -21,10 +21,12 @@ def initialize():
     # sky sim session
     if 'sky_file_path' not in st.session_state:
         st.session_state.sky_file_path = False
-    if 'high_sky_density' not in st.session_state:
-        st.session_state.high_sky_density = False
     if 'north' not in st.session_state:
         st.session_state.north = 0
+    if 'high_sky_density' not in st.session_state:
+        st.session_state.high_sky_density = False
+    if 'average_irradiance' not in st.session_state:
+        st.session_state.average_irradiance = False
     if 'run_period' not in st.session_state:
         st.session_state.run_period = AnalysisPeriod()
     if 'sky_matrix' not in st.session_state:
@@ -62,15 +64,15 @@ def new_sky_matrix():
 def new_sky_file():
     """Process a newly-uploaded EPW file."""
     new_sky_matrix()
-    epw_file = st.session_state.epw_data
-    if epw_file:
+    weather_file = st.session_state.weather_data
+    if weather_file:
         # save EPW in data folder
         epw_path = Path(
             f'./{st.session_state.target_folder}/data/'
-            f'{st.session_state.user_id}/{epw_file.name}'
+            f'{st.session_state.user_id}/{weather_file.name}'
         )
         epw_path.parent.mkdir(parents=True, exist_ok=True)
-        epw_path.write_bytes(epw_file.read())
+        epw_path.write_bytes(weather_file.read())
         st.session_state.sky_file_path = epw_path
     else:
         st.session_state.sky_file_path = None
@@ -79,10 +81,11 @@ def new_sky_file():
 def get_sky_file(column):
     """Get the sky matrix from the EPW App input."""
     # upload weather file
+    msg = 'Select an EPW or STAT weather file to be used in the simulation.\n' \
+        'STAT files will generate a clear sky from monthly optical depths.'
     column.file_uploader(
-        'Weather file (EPW)', type=['epw'],
-        on_change=new_sky_file, key='epw_data',
-        help='Select an EPW weather file to be used in the simulation.'
+        'Weather file (EPW or STAT)', type=['epw', 'stat'],
+        on_change=new_sky_file, key='weather_data', help=msg
     )
 
 
@@ -268,12 +271,7 @@ def get_inputs(host: str, container):
     w_col_1, w_col_2 = container.columns([2, 1])
     get_sky_file(w_col_1)
 
-    # set up inputs for sky density, north and ground reflectance
-    sky_density = w_col_2.checkbox(label='High Density Sky', value=False)
-    if sky_density != st.session_state.high_sky_density:
-        st.session_state.high_sky_density = sky_density
-        new_sky_matrix()
-        st.session_state.intersection_matrix = None
+    # set up inputs for sky density, north and output metric
     in_north = w_col_2.number_input(
         label='North', min_value=-360, max_value=360, value=0)
     if in_north != st.session_state.north:
@@ -281,6 +279,15 @@ def get_inputs(host: str, container):
         st.session_state.intersection_matrix = None
         st.session_state.radiation_values = None  # reset to have results recomputed
         st.session_state.vtk_path = None  # reset to have results recomputed
+    sky_density = w_col_2.checkbox(label='High Density Sky', value=False)
+    if sky_density != st.session_state.high_sky_density:
+        st.session_state.high_sky_density = sky_density
+        new_sky_matrix()
+        st.session_state.intersection_matrix = None
+    avg_irradiance = w_col_2.checkbox(label='Average Irradiance', value=False)
+    if avg_irradiance != st.session_state.average_irradiance:
+        st.session_state.average_irradiance = avg_irradiance
+        new_sky_matrix()
 
     # set up the inputs for the date range
     container.markdown("""---""")  # horizontal divider between datetimes and others

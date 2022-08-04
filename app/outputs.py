@@ -4,6 +4,7 @@ import json
 import pathlib
 import streamlit as st
 
+from honeybee.units import conversion_factor_to_meters
 from honeybee_vtk.model import Model as VTKModel, SensorGridOptions, DisplayMode
 from pollination_streamlit_io import send_geometry
 from pollination_streamlit_viewer import viewer
@@ -24,21 +25,25 @@ def write_result_files(res_folder, hb_model, rad_values):
         json.dump(grids_info, fp, indent=2, ensure_ascii=False)
 
 
-def get_vtk_config(res_folder: pathlib.Path, values) -> str:
+def get_vtk_config(res_folder: pathlib.Path, values, avg_irr) -> str:
     """Write Incident Radiation config to a folder."""
+    min_val, max_val = min(values), max(values)
+    if min_val == max_val == 0:
+        max_val = 1
+    unit = 'W/m2' if avg_irr else 'kWh/m2'
     cfg = {
         "data": [
             {
                 "identifier": "Incident Radiation",
                 "object_type": "grid",
-                "unit": "kWh/m2",
+                "unit": unit,
                 "path": res_folder.as_posix(),
                 "hide": False,
                 "legend_parameters": {
                     "hide_legend": False,
                     "color_set": "original",
-                    "min": min(values),
-                    "max": max(values),
+                    "min": min_val,
+                    "max": max_val,
                     "label_parameters": {
                         "color": [34, 247, 10],
                         "size": 0,
@@ -65,7 +70,7 @@ def get_vtk_model_result(simulation_folder: pathlib.Path, cfg_file, hb_model, co
     st.session_state.vtk_path = vtk_result_path
 
 
-def display_results(host, target_folder, user_id, rad_values, container):
+def display_results(host, target_folder, user_id, rad_values, avg_irr, container):
     """Create the visualization of the radiation results.
 
     Args:
@@ -74,6 +79,8 @@ def display_results(host, target_folder, user_id, rad_values, container):
         user_id: A unique user ID for the session, which will be used to ensure
             other simulations do not overwrite this one.
         rad_values: A list of radiation values to be visualized.
+        avg_irr: Boolean to note wether rad values are radiation in kWh/m2 instead
+            of irradiance in W/m2.
         container: The streamlit container to which the viewer will be added.
     """
     if host in ('rhino', 'sketchup'):  # pass the results to the CAD environment
@@ -100,15 +107,26 @@ def display_results(host, target_folder, user_id, rad_values, container):
     else:  # write the radiation values to files
         if not rad_values:
             return
+        # report the total radiation (or average irradiance)
+        hb_model = st.session_state.hb_model
+        face_areas = st.session_state.simulation_geo.face_areas
+        unit_conv = conversion_factor_to_meters(hb_model.units) ** 2
+        total = 0
+        for rad, area in zip(rad_values, face_areas):
+            total += rad * area * unit_conv
+        if avg_irr:
+            tot_area = sum(face_areas) * unit_conv
+            container.header('Average Irradiance: {:,.1f} W/m2'.format(total / tot_area))
+        else:
+            container.header('Total Radiation: {:,.0f} kWh'.format(total))
         # set up the result folders
         res_folder = os.path.join(target_folder, 'data', user_id, 'results')
         if not os.path.isdir(res_folder):
             os.mkdir(res_folder)
         res_path = pathlib.Path(res_folder).resolve()
         if st.session_state.vtk_path is None:
-            hb_model = st.session_state.hb_model
             write_result_files(res_folder, hb_model, rad_values)
-            cfg_file = get_vtk_config(res_path, rad_values)
+            cfg_file = get_vtk_config(res_path, rad_values, avg_irr)
             get_vtk_model_result(res_path.parent, cfg_file, hb_model, container)
         vtk_path = st.session_state.vtk_path
         with container:
