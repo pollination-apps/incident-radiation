@@ -28,6 +28,7 @@ PATCH_ROW_COEFF = {
     1: view_sphere.TREGENZA_COEFFICIENTS,
     2: view_sphere.REINHART_COEFFICIENTS
 }
+assert rad_folders.radbin_path is not None, 'Failed to find the Radiance installation.'
 gendaymtx_exe = os.path.join(rad_folders.radbin_path, 'gendaymtx.exe') if \
     os.name == 'nt' else os.path.join(rad_folders.radbin_path, 'gendaymtx')
 
@@ -49,7 +50,7 @@ def broadband_radiation(patch_row_str, row_number, wea_duration, sky_density=1):
     """
     R, G, B = patch_row_str.split(b' ')
     weight_val = 0.265074126 * float(R) + 0.670114631 * float(G) + 0.064811243 * float(B)
-    return weight_val * PATCH_ROW_COEFF[sky_density][row_number] * wea_duration / 1000
+    return weight_val * PATCH_ROW_COEFF[sky_density][row_number] * wea_duration
 
 
 def parse_mtx_data(data_str, wea_duration, sky_density=1):
@@ -82,17 +83,22 @@ def parse_mtx_data(data_str, wea_duration, sky_density=1):
     return broadband_irr
 
 
-def compute_sky_matrix(epw_path, run_period, high_sky_density):
+def compute_sky_matrix(sky_file_path, run_period, high_sky_density, avg_irr):
     """Compute the sky matrix from an input weather file and run period."""
-    # create a Wea file from the EPW
+    # create a Wea file from the weather file
     density = 2 if high_sky_density else 1
-    wea_file = epw_path.as_posix().replace('.epw', '.wea')
-    wea_obj = Wea.from_epw_file(epw_path.as_posix())
+    if sky_file_path.name.endswith('.epw'):
+        wea_file = sky_file_path.as_posix().replace('.epw', '.wea')
+        wea_obj = Wea.from_epw_file(sky_file_path.as_posix())
+    elif sky_file_path.name.endswith('.stat'):
+        wea_file = sky_file_path.as_posix().replace('.stat', '.wea')
+        wea_obj = Wea.from_stat_file(sky_file_path.as_posix())
     if len(run_period) != 8760:
         wea_obj = wea_obj.filter_by_analysis_period(run_period)
         wea_duration = len(run_period)
     else:
         wea_duration = 8760
+    wea_duration = 1 if avg_irr else wea_duration / 1000  # 1000 converts to kWh
     wea_obj.write(wea_file)
     # execute the Radiance gendaymtx command
     use_shell = True if os.name == 'nt' else False
@@ -199,7 +205,7 @@ def compute_intersection_matrix(
 
 
 def run_simulation(
-    target_folder, user_id, sky_file_path, run_period, high_sky_density,
+    target_folder, user_id, sky_file_path, run_period, high_sky_density, avg_irr,
     study_mesh, context_geo, offset_dist, ground_reflectance, north
 ):
     """Run a simulation to get incident radiation."""
@@ -214,7 +220,7 @@ def run_simulation(
     if auto_rerun or button_holder.button('Compute Radiation'):
         # get the values for the radiation of the view sphere
         if st.session_state.sky_matrix is None:
-            compute_sky_matrix(sky_file_path, run_period, high_sky_density)
+            compute_sky_matrix(sky_file_path, run_period, high_sky_density, avg_irr)
         mtx = st.session_state.sky_matrix
         total_sky_rad = [dir_rad + dif_rad for dir_rad, dif_rad in zip(mtx[0], mtx[1])]
         ground_value = (sum(total_sky_rad) / len(total_sky_rad)) * ground_reflectance
