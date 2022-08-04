@@ -130,16 +130,16 @@ def new_geometry():
             if geo_dict['type'] == 'Polyface3D':
                 polyface = Polyface3D.from_dict(geo_dict)
                 for face in polyface.faces:
+                    geo_face3d.append(face)
                     try:
                         geo_meshes.append(face.mesh_grid(grid_size))
-                        geo_face3d.append(face)
                     except AssertionError:
                         pass  # grid size is not small enough
             elif geo_dict['type'] == 'Face3D':
                 face = Face3D.from_dict(geo_dict)
+                geo_face3d.append(face)
                 try:
                     geo_meshes.append(face.mesh_grid(grid_size))
-                    geo_face3d.append(face)
                 except AssertionError:
                     pass  # grid size is not small enough
             elif geo_dict['type'] == 'Mesh3D':
