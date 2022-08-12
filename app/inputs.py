@@ -124,10 +124,26 @@ def new_geometry():
     # load the model object from the file data
     if 'geometry' in st.session_state['geometry_data']:
         geo_data = st.session_state['geometry_data']['geometry']
+        if geo_data is None:
+            st.session_state.simulation_geo = None
+            return
         grid_size = st.session_state.grid_size
         geo_meshes, geo_face3d = [], []
-        for geo_dict in geo_data:
-            if geo_dict['type'] == 'Polyface3D':
+        for geo in geo_data:
+            if isinstance(geo, (list, tuple)):
+                for geo_dict in geo:
+                    if geo_dict['type'] == 'Face3D':
+                        face = Face3D.from_dict(geo_dict)
+                        geo_face3d.append(face)
+                        try:
+                            geo_meshes.append(face.mesh_grid(grid_size))
+                        except AssertionError:
+                            pass  # grid size is not small enough
+            elif geo_dict['type'] == 'Mesh3D':
+                mesh = Mesh3D.from_dict(geo_dict)
+                geo_meshes.append(mesh)
+                geo_face3d.append(mesh)
+            elif geo_dict['type'] == 'Polyface3D':
                 polyface = Polyface3D.from_dict(geo_dict)
                 for face in polyface.faces:
                     geo_face3d.append(face)
@@ -135,17 +151,6 @@ def new_geometry():
                         geo_meshes.append(face.mesh_grid(grid_size))
                     except AssertionError:
                         pass  # grid size is not small enough
-            elif geo_dict['type'] == 'Face3D':
-                face = Face3D.from_dict(geo_dict)
-                geo_face3d.append(face)
-                try:
-                    geo_meshes.append(face.mesh_grid(grid_size))
-                except AssertionError:
-                    pass  # grid size is not small enough
-            elif geo_dict['type'] == 'Mesh3D':
-                mesh = Mesh3D.from_dict(geo_dict)
-                geo_meshes.append(mesh)
-                geo_face3d.append(mesh)
         if len(geo_meshes) != 0:
             st.session_state.simulation_geo = Mesh3D.join_meshes(geo_meshes)
             st.session_state.sim_context_geo = geo_face3d
@@ -161,13 +166,13 @@ def get_study_geometry(column):
     """Get the study Geometry from the CAD environment."""
     # load the model object from the file data
     options = {
-        'subscribe': {'show': False, 'selected': False},
+        'subscribe': {'show': True, 'selected': True},
         'selection': {'show': True, 'selected': True}
     }
     with column:
         geometry_data = get_geometry(
             key='geometry_data', on_change=new_geometry,
-            options=options, label='Get Geometry')
+            options=options, label='Geometry')
     if st.session_state.simulation_geo is None and geometry_data is not None \
             and 'geometry' in geometry_data:
         new_geometry()
@@ -181,18 +186,23 @@ def new_context():
     # load the model object from the file data
     if 'geometry' in st.session_state['context_data']:
         geo_data = st.session_state['context_data']['geometry']
+        if geo_data is None:
+            st.session_state.simulation_geo = None
+            return
         geo_objs = []
-        for geo_dict in geo_data:
-            if geo_dict['type'] == 'Polyface3D':
-                polyface = Polyface3D.from_dict(geo_dict)
+        for geo in geo_data:
+            if isinstance(geo, (list, tuple)):
+                for geo_dict in geo:
+                    if geo_dict['type'] == 'Face3D':
+                        face = Face3D.from_dict(geo_dict)
+                        geo_objs.append(face)
+            elif geo['type'] == 'Mesh3D':
+                mesh = Mesh3D.from_dict(geo)
+                geo_objs.append(mesh)
+            elif geo['type'] == 'Polyface3D':
+                polyface = Polyface3D.from_dict(geo)
                 for face in polyface.faces:
                     geo_objs.append(face)
-            elif geo_dict['type'] == 'Face3D':
-                face = Face3D.from_dict(geo_dict)
-                geo_objs.append(face)
-            elif geo_dict['type'] == 'Mesh3D':
-                mesh = Mesh3D.from_dict(geo_dict)
-                geo_objs.append(mesh)
         st.session_state.context_geo = geo_objs
 
 
@@ -200,13 +210,13 @@ def get_context_geometry(column):
     """Get the context Geometry from the CAD environment."""
     # load the model object from the file data
     options = {
-        'subscribe': {'show': False, 'selected': False},
+        'subscribe': {'show': True, 'selected': True},
         'selection': {'show': True, 'selected': True}
     }
     with column:
         context_data = get_geometry(
             key='context_data', on_change=new_context,
-            options=options, label='Get Context')
+            options=options, label='Context')
     if st.session_state.context_geo is None and context_data is not None \
             and 'geometry' in context_data:
         new_context()

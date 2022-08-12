@@ -4,9 +4,10 @@ import json
 import pathlib
 import streamlit as st
 
+from ladybug.graphic import GraphicContainer
 from honeybee.units import conversion_factor_to_meters
 from honeybee_vtk.model import Model as VTKModel, SensorGridOptions, DisplayMode
-from pollination_streamlit_io import send_geometry
+from pollination_streamlit_io import send_results
 from pollination_streamlit_viewer import viewer
 
 
@@ -93,17 +94,19 @@ def display_results(host, target_folder, user_id, rad_values, avg_irr, container
         }
         if not rad_values:
             with container:
-                send_geometry(geometry=[], key='rad-grids',
-                              option='subscribe-preview', options=options)
+                send_results(results=[], key='rad-grids',
+                             option='subscribe-preview', options=options)
         else:
+            graphic = GraphicContainer(
+                rad_values, geometry=st.session_state.simulation_geo)
             analytical_mesh = {
                 "type": "AnalyticalMesh",
                 "mesh": [st.session_state.simulation_geo.to_dict()],
                 "values": rad_values
             }
             with container:
-                send_geometry(geometry=analytical_mesh, key='rad-grids',
-                              option='subscribe-preview', options=options)
+                send_results(results=graphic.to_dict(), key='rad-grids',
+                             option='subscribe-preview', options=options)
     else:  # write the radiation values to files
         if not rad_values:
             return
