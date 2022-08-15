@@ -187,8 +187,10 @@ def compute_intersection_matrix(
     # run the ray tracing command
     output_mtx = 'results.mtx'
     options = RcontribOptions()
-    rad_par = '-V- -aa 0.0 -y {} -I -faf -ab 0 -dc 1.0 -dt 0.0 -dj 0.0 -dr 0'.format(
-        len(points))
+    cpu_count = os.cpu_count()
+    cpu_count = 1 if cpu_count is None or cpu_count <= 1 else cpu_count - 1
+    rad_par = '-V- -aa 0.0 -y {} -I -faf -ab 0 -dc 1.0 -dt 0.0 -dj 0.0 -dr 0 ' \
+        '-n {}'.format(len(points), cpu_count)
     options.update_from_string(rad_par)
     options.M = '"{}"'.format(os.path.join(os.path.abspath(sim_folder), vec_mod_file))
     rcontrib = Rcontrib(options=options, octree=scene_oct, sensors=pts_file)
