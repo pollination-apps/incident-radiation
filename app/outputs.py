@@ -4,6 +4,8 @@ import json
 import pathlib
 import streamlit as st
 
+from ladybug.datatype.energyintensity import Radiation
+from ladybug.datatype.energyflux import Irradiance
 from ladybug.graphic import GraphicContainer
 from honeybee.units import conversion_factor_to_meters
 from honeybee_vtk.model import Model as VTKModel, SensorGridOptions, DisplayMode
@@ -97,13 +99,12 @@ def display_results(host, target_folder, user_id, rad_values, avg_irr, container
                 send_results(results=[], key='rad-grids',
                              option='subscribe-preview', options=options)
         else:
+            d_type = Irradiance('Incident Irradiance') if avg_irr \
+                else Radiation('Incident Radiation')
+            unit = 'W/m2' if avg_irr else 'kWh/m2'
             graphic = GraphicContainer(
-                rad_values, geometry=st.session_state.simulation_geo)
-            analytical_mesh = {
-                "type": "AnalyticalMesh",
-                "mesh": [st.session_state.simulation_geo.to_dict()],
-                "values": rad_values
-            }
+                rad_values, data_type=d_type, unit=unit,
+                geometry=st.session_state.simulation_geo)
             with container:
                 send_results(results=graphic.to_dict(), key='rad-grids',
                              option='subscribe-preview', options=options)
