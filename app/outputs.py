@@ -7,6 +7,9 @@ import streamlit as st
 from ladybug.datatype.energyintensity import Radiation
 from ladybug.datatype.energyflux import Irradiance
 from honeybee.units import conversion_factor_to_meters
+# from honeybee.shade import Shade
+# from honeybee.model import Model
+# from honeybee_radiance.sensorgrid import SensorGrid
 from honeybee_vtk.model import Model as VTKModel, SensorGridOptions, DisplayMode
 from pollination_streamlit_io import send_results
 from pollination_streamlit_viewer import viewer
@@ -85,7 +88,9 @@ def display_results(host, target_folder, user_id, rad_values, avg_irr, container
             of irradiance in W/m2.
         container: The streamlit container to which the viewer will be added.
     """
+    in_ap_display = False
     if host in ('rhino', 'sketchup'):  # pass the results to the CAD environment
+        # in_ap_display = container.checkbox(label='Display Results in App', value=False)
         options = {
             'add': True,
             'delete': False,
@@ -101,6 +106,18 @@ def display_results(host, target_folder, user_id, rad_values, avg_irr, container
             d_type = Irradiance('Incident Irradiance') if avg_irr \
                 else Radiation('Incident Radiation')
             unit = 'W/m2' if avg_irr else 'kWh/m2'
+            leg_colors = [
+                {'r': 75, 'g': 107, 'b': 169, 'a': 255, 'type': 'Color'},
+                {'r': 115, 'g': 147, 'b': 202, 'a': 255, 'type': 'Color'},
+                {'r': 170, 'g': 200, 'b': 247, 'a': 255, 'type': 'Color'},
+                {'r': 193, 'g': 213, 'b': 208, 'a': 255, 'type': 'Color'},
+                {'r': 245, 'g': 239, 'b': 103, 'a': 255, 'type': 'Color'},
+                {'r': 252, 'g': 230, 'b': 74, 'a': 255, 'type': 'Color'},
+                {'r': 239, 'g': 156, 'b': 21, 'a': 255, 'type': 'Color'},
+                {'r': 234, 'g': 123, 'b': 0, 'a': 255, 'type': 'Color'},
+                {'r': 234, 'g': 74, 'b': 0, 'a': 255, 'type': 'Color'},
+                {'r': 234, 'g': 38, 'b': 0, 'a': 255, 'type': 'Color'}
+            ]
             viz_set = {
                 'type': 'VisualizationSet',
                 'analysis_geometry': {
@@ -110,20 +127,42 @@ def display_results(host, target_folder, user_id, rad_values, avg_irr, container
                             'type': 'VisualizationData',
                             'values': rad_values,
                             'data_type': d_type.to_dict(),
-                            'unit': unit
+                            'unit': unit,
+                            "legend_parameters": {
+                                "base_plane": {
+                                    "type": "Plane",
+                                    "o": [10, 50, 0],
+                                    "n": [0, 0, 1],
+                                    "x": [1, 0, 0]
+                                },
+                                "segment_count": 11,
+                                "continuous_legend": False,
+                                "decimal_count": 1,
+                                "include_larger_smaller": False,
+                                "vertical": True,
+                                "font": "Arial",
+                                "colors": leg_colors,
+                                "title": unit,
+                                "min": min(rad_values),
+                                "max": max(rad_values),
+                                "ordinal_dictionary": None,
+                                "type": "LegendParameters"
+                            }
                         }
-                    ]
-                },
-                'geometry': st.session_state.simulation_geo.to_dict()
+                    ],
+                    'geometry': [st.session_state.simulation_geo.to_dict()]
+                }
             }
             with container:
                 send_results(results=viz_set, key='rad-grids',
                              option='subscribe-preview', options=options)
-    else:  # write the radiation values to files
+    if host == 'web' or in_ap_display:  # write the radiation values to files
         if not rad_values:
             return
         # report the total radiation (or average irradiance)
         hb_model = st.session_state.hb_model
+        if hb_model is None:  # create the honeybee model
+            pass
         face_areas = st.session_state.simulation_geo.face_areas
         unit_conv = conversion_factor_to_meters(hb_model.units) ** 2
         total = 0
