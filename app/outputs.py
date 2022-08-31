@@ -6,7 +6,6 @@ import streamlit as st
 
 from ladybug.datatype.energyintensity import Radiation
 from ladybug.datatype.energyflux import Irradiance
-from ladybug.graphic import GraphicContainer
 from honeybee.units import conversion_factor_to_meters
 from honeybee_vtk.model import Model as VTKModel, SensorGridOptions, DisplayMode
 from pollination_streamlit_io import send_results
@@ -102,11 +101,23 @@ def display_results(host, target_folder, user_id, rad_values, avg_irr, container
             d_type = Irradiance('Incident Irradiance') if avg_irr \
                 else Radiation('Incident Radiation')
             unit = 'W/m2' if avg_irr else 'kWh/m2'
-            graphic = GraphicContainer(
-                rad_values, data_type=d_type, unit=unit,
-                geometry=st.session_state.simulation_geo)
+            viz_set = {
+                'type': 'VisualizationSet',
+                'analysis_geometry': {
+                    'type': 'AnalysisGeometry',
+                    'data_sets': [
+                        {
+                            'type': 'VisualizationData',
+                            'values': rad_values,
+                            'data_type': d_type.to_dict(),
+                            'unit': unit
+                        }
+                    ]
+                },
+                'geometry': st.session_state.simulation_geo.to_dict()
+            }
             with container:
-                send_results(results=graphic.to_dict(), key='rad-grids',
+                send_results(results=viz_set, key='rad-grids',
                              option='subscribe-preview', options=options)
     else:  # write the radiation values to files
         if not rad_values:
