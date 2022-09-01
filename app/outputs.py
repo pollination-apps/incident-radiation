@@ -4,12 +4,17 @@ import json
 import pathlib
 import streamlit as st
 
+from ladybug_geometry.geometry3d import Point3D, Plane
+from ladybug.color import Colorset
+from ladybug.legend import LegendParameters
 from ladybug.datatype.energyintensity import Radiation
 from ladybug.datatype.energyflux import Irradiance
+from ladybug_display.visualization import VisualizationData, AnalysisGeometry, \
+    VisualizationSet
 from honeybee.units import conversion_factor_to_meters
-# from honeybee.shade import Shade
-# from honeybee.model import Model
-# from honeybee_radiance.sensorgrid import SensorGrid
+from honeybee.shade import Shade
+from honeybee.model import Model
+from honeybee_radiance.sensorgrid import SensorGrid
 from honeybee_vtk.model import Model as VTKModel, SensorGridOptions, DisplayMode
 from pollination_streamlit_io import send_results
 from pollination_streamlit_viewer import viewer
@@ -32,7 +37,16 @@ def write_result_files(res_folder, hb_model, rad_values):
 
 def get_vtk_config(res_folder: pathlib.Path, values, avg_irr) -> str:
     """Write Incident Radiation config to a folder."""
-    min_val, max_val = min(values), max(values)
+    if st.session_state.override_min_max:
+        min_val = st.session_state.legend_min
+        max_val = st.session_state.legend_max
+    elif st.session_state.use_benefit:
+        extrema = max(abs(min(values)), max(values))
+        min_val, max_val = -extrema, extrema
+    else:
+        min_val, max_val = min(values), max(values)
+    color_set = 'benefit_harm' if st.session_state.use_benefit else 'original'
+    rev_colorset = True if st.session_state.use_benefit else False
     if min_val == max_val == 0:
         max_val = 1
     unit = 'W/m2' if avg_irr else 'kWh/m2'
@@ -46,7 +60,8 @@ def get_vtk_config(res_folder: pathlib.Path, values, avg_irr) -> str:
                 "hide": False,
                 "legend_parameters": {
                     "hide_legend": False,
-                    "color_set": "original",
+                    "color_set": color_set,
+                    "reverse_colorset": rev_colorset,
                     "min": min_val,
                     "max": max_val,
                     "label_parameters": {
@@ -75,6 +90,19 @@ def get_vtk_model_result(simulation_folder: pathlib.Path, cfg_file, hb_model, co
     st.session_state.vtk_path = vtk_result_path
 
 
+def report_total_radiation(rad_values, container, avg_irr, unit_conv=1):
+    """Report the total radiation across all of the simulation geometry."""
+    face_areas = st.session_state.simulation_geo.face_areas
+    total = 0
+    for rad, area in zip(rad_values, face_areas):
+        total += rad * area * unit_conv
+    if avg_irr:
+        tot_area = sum(face_areas) * unit_conv
+        container.header('Average Irradiance: {:,.1f} W/m2'.format(total / tot_area))
+    else:
+        container.header('Total Radiation: {:,.0f} kWh'.format(total))
+
+
 def display_results(host, target_folder, user_id, rad_values, avg_irr, container):
     """Create the visualization of the radiation results.
 
@@ -88,9 +116,13 @@ def display_results(host, target_folder, user_id, rad_values, avg_irr, container
             of irradiance in W/m2.
         container: The streamlit container to which the viewer will be added.
     """
+    # test if the results should be loaded to the CAD environment
     in_ap_display = False
-    if host in ('rhino', 'sketchup'):  # pass the results to the CAD environment
-        # in_ap_display = container.checkbox(label='Display Results in App', value=False)
+    if host in ('rhino', 'sketchup'):
+        ap_dis_help = 'Check to have the results display through a viewer in the ' \
+            'application instead of being pushed to the CAD environment.'
+        in_ap_display = container.checkbox(
+            label='Display Results in App', value=False, help=ap_dis_help)
         options = {
             'add': True,
             'delete': False,
@@ -98,7 +130,7 @@ def display_results(host, target_folder, user_id, rad_values, avg_irr, container
             'clear': False,
             'subscribe-preview': True
         }
-        if not rad_values:
+        if not rad_values or in_ap_display:
             with container:
                 send_results(results=[], key='rad-grids',
                              option='subscribe-preview', options=options)
@@ -106,73 +138,48 @@ def display_results(host, target_folder, user_id, rad_values, avg_irr, container
             d_type = Irradiance('Incident Irradiance') if avg_irr \
                 else Radiation('Incident Radiation')
             unit = 'W/m2' if avg_irr else 'kWh/m2'
-            leg_colors = [
-                {'r': 75, 'g': 107, 'b': 169, 'a': 255, 'type': 'Color'},
-                {'r': 115, 'g': 147, 'b': 202, 'a': 255, 'type': 'Color'},
-                {'r': 170, 'g': 200, 'b': 247, 'a': 255, 'type': 'Color'},
-                {'r': 193, 'g': 213, 'b': 208, 'a': 255, 'type': 'Color'},
-                {'r': 245, 'g': 239, 'b': 103, 'a': 255, 'type': 'Color'},
-                {'r': 252, 'g': 230, 'b': 74, 'a': 255, 'type': 'Color'},
-                {'r': 239, 'g': 156, 'b': 21, 'a': 255, 'type': 'Color'},
-                {'r': 234, 'g': 123, 'b': 0, 'a': 255, 'type': 'Color'},
-                {'r': 234, 'g': 74, 'b': 0, 'a': 255, 'type': 'Color'},
-                {'r': 234, 'g': 38, 'b': 0, 'a': 255, 'type': 'Color'}
-            ]
-            viz_set = {
-                'type': 'VisualizationSet',
-                'analysis_geometry': {
-                    'type': 'AnalysisGeometry',
-                    'data_sets': [
-                        {
-                            'type': 'VisualizationData',
-                            'values': rad_values,
-                            'data_type': d_type.to_dict(),
-                            'unit': unit,
-                            "legend_parameters": {
-                                "base_plane": {
-                                    "type": "Plane",
-                                    "o": [10, 50, 0],
-                                    "n": [0, 0, 1],
-                                    "x": [1, 0, 0]
-                                },
-                                "segment_count": 11,
-                                "continuous_legend": False,
-                                "decimal_count": 1,
-                                "include_larger_smaller": False,
-                                "vertical": True,
-                                "font": "Arial",
-                                "colors": leg_colors,
-                                "title": unit,
-                                "min": min(rad_values),
-                                "max": max(rad_values),
-                                "ordinal_dictionary": None,
-                                "type": "LegendParameters"
-                            }
-                        }
-                    ],
-                    'geometry': [st.session_state.simulation_geo.to_dict()]
-                }
-            }
+            if st.session_state.override_min_max:
+                min_val = st.session_state.legend_min
+                max_val = st.session_state.legend_max
+            elif st.session_state.use_benefit:
+                extrema = max(abs(min(rad_values)), max(rad_values))
+                min_val, max_val = -extrema, extrema
+            else:
+                min_val, max_val = min(rad_values), max(rad_values)
+            color_set = reversed(Colorset.benefit_harm()) \
+                if st.session_state.use_benefit else Colorset.original()
+            l_par = LegendParameters(
+                min=min_val, max=max_val, title=unit,
+                segment_count=st.session_state.legend_seg_count,
+                base_plane=Plane(o=Point3D(10, 50, 0)))
+            l_par.decimal_count = 1
+            l_par.colors = color_set
+            viz_data = VisualizationData(
+                rad_values, l_par, data_type=d_type, unit=unit)
+            a_geo = AnalysisGeometry([st.session_state.simulation_geo], [viz_data])
+            viz_set = VisualizationSet(a_geo)
             with container:
-                send_results(results=viz_set, key='rad-grids',
+                send_results(results=viz_set.to_dict(), key='rad-grids',
                              option='subscribe-preview', options=options)
+                report_total_radiation(rad_values, container, avg_irr)
+
+    # draw the VTK visualization
     if host == 'web' or in_ap_display:  # write the radiation values to files
         if not rad_values:
             return
         # report the total radiation (or average irradiance)
         hb_model = st.session_state.hb_model
         if hb_model is None:  # create the honeybee model
-            pass
-        face_areas = st.session_state.simulation_geo.face_areas
+            shades, con_geo = [], st.session_state.context_geo
+            if con_geo is not None:
+                for i, s_geo in enumerate(con_geo):
+                    shades.append(Shade('Shade_{}'.format(i), s_geo))
+            s_grid = SensorGrid.from_mesh3d(
+                'simulation_geometry', st.session_state.simulation_geo)
+            hb_model = Model('simulation_model', orphaned_shades=shades)
+            hb_model.properties.radiance.sensor_grids = [s_grid]
         unit_conv = conversion_factor_to_meters(hb_model.units) ** 2
-        total = 0
-        for rad, area in zip(rad_values, face_areas):
-            total += rad * area * unit_conv
-        if avg_irr:
-            tot_area = sum(face_areas) * unit_conv
-            container.header('Average Irradiance: {:,.1f} W/m2'.format(total / tot_area))
-        else:
-            container.header('Total Radiation: {:,.0f} kWh'.format(total))
+        report_total_radiation(rad_values, container, avg_irr, unit_conv)
         # set up the result folders
         res_folder = os.path.join(target_folder, 'data', user_id, 'results')
         if not os.path.isdir(res_folder):

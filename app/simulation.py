@@ -9,6 +9,7 @@ from ladybug_geometry.geometry3d import Face3D, Mesh3D
 from ladybug.futil import write_to_file_by_name
 from ladybug.viewsphere import view_sphere
 from ladybug.wea import Wea
+from ladybug.epw import EPW
 from honeybee_radiance_command.oconv import Oconv
 from honeybee_radiance_command.rcontrib import Rcontrib, RcontribOptions
 from honeybee_radiance_command._command_util import run_command
@@ -83,41 +84,94 @@ def parse_mtx_data(data_str, wea_duration, sky_density=1):
     return broadband_irr
 
 
-def compute_sky_matrix(sky_file_path, run_period, high_sky_density, avg_irr):
+def run_gendaymtx(wea_file, wea_duration, density):
+    """Run a Wea file through gendaymtx and get direct and diffuse radiation."""
+    use_shell = True if os.name == 'nt' else False
+    # command for direct patches
+    cmds1 = [gendaymtx_exe, '-m', str(density), '-d', '-O1', '-A', wea_file]
+    process = subprocess.Popen(cmds1, stdout=subprocess.PIPE, shell=use_shell)
+    stdout = process.communicate()
+    dir_data_str = stdout[0]
+    # command for diffuse patches
+    cmds2 = [gendaymtx_exe, '-m', str(density), '-s', '-O1', '-A', wea_file]
+    process = subprocess.Popen(cmds2, stdout=subprocess.PIPE, shell=use_shell)
+    stdout = process.communicate()
+    diff_data_str = stdout[0]
+    # parse the data into a single matrix
+    dir_vals = parse_mtx_data(dir_data_str, wea_duration, density)
+    diff_vals = parse_mtx_data(diff_data_str, wea_duration, density)
+    return dir_vals, diff_vals
+
+
+def split_for_benefit(sky_file_path, use_benefit, bal_temp):
+    """Split an input EPW file into two Wea files for radiation benefit/harm."""
+    dir_vals1, dif_vals1, dir_vals2, dif_vals2 = [], [], [], []
+    epw_obj = EPW(sky_file_path.as_posix())
+    zip_obj = zip(
+        epw_obj.direct_normal_radiation,
+        epw_obj.diffuse_horizontal_radiation,
+        epw_obj.dry_bulb_temperature
+    )
+    for dir_v, dif_v, temp in zip_obj:
+        if temp < bal_temp - 2:
+            dir_vals1.append(dir_v)
+            dif_vals1.append(dif_v)
+            dir_vals2.append(0)
+            dif_vals2.append(0)
+        elif temp > bal_temp + 2:
+            dir_vals2.append(dir_v)
+            dif_vals2.append(dif_v)
+            dir_vals1.append(0)
+            dif_vals1.append(0)
+        else:
+            dir_vals1.append(0)
+            dif_vals1.append(0)
+            dir_vals2.append(0)
+            dif_vals2.append(0)
+    wea_obj1 = Wea.from_annual_values(epw_obj.location, dir_vals1, dif_vals1)
+    wea_obj2 = Wea.from_annual_values(epw_obj.location, dir_vals2, dif_vals2)
+    return wea_obj1, wea_obj2
+
+
+def compute_sky_matrix(sky_file_path, run_period, high_sky_density, avg_irr,
+                       use_benefit, bal_temp):
     """Compute the sky matrix from an input weather file and run period."""
     # create a Wea file from the weather file
     density = 2 if high_sky_density else 1
+    wea_obj2 = None
     if sky_file_path.name.endswith('.epw'):
         wea_file = sky_file_path.as_posix().replace('.epw', '.wea')
-        wea_obj = Wea.from_epw_file(sky_file_path.as_posix())
+        if use_benefit:
+            wea_obj, wea_obj2 = split_for_benefit(sky_file_path, use_benefit, bal_temp)
+        else:
+            wea_obj = Wea.from_epw_file(sky_file_path.as_posix())
     elif sky_file_path.name.endswith('.stat'):
         wea_file = sky_file_path.as_posix().replace('.stat', '.wea')
         wea_obj = Wea.from_stat_file(sky_file_path.as_posix())
+    # apply the run period to the Wea
     if len(run_period) != 8760:
         wea_obj = wea_obj.filter_by_analysis_period(run_period)
+        if wea_obj2 is not None:
+            wea_obj2 = wea_obj2.filter_by_analysis_period(run_period)
         wea_duration = len(run_period)
     else:
         wea_duration = 8760
     wea_duration = 1 if avg_irr else wea_duration / 1000  # 1000 converts to kWh
     wea_obj.write(wea_file)
-    # execute the Radiance gendaymtx command
-    use_shell = True if os.name == 'nt' else False
-    # command for direct patches
-    cmds = [gendaymtx_exe, '-m', str(density), '-d', '-O1', '-A', wea_file]
-    process = subprocess.Popen(cmds, stdout=subprocess.PIPE, shell=use_shell)
-    stdout = process.communicate()
-    dir_data_str = stdout[0]
-    # command for diffuse patches
-    cmds = [gendaymtx_exe, '-m', str(density), '-s', '-O1', '-A', wea_file]
-    process = subprocess.Popen(cmds, stdout=subprocess.PIPE, shell=use_shell)
-    stdout = process.communicate()
-    diff_data_str = stdout[0]
 
-    # parse the data into a single matrix
-    dir_vals = parse_mtx_data(dir_data_str, wea_duration, density)
-    diff_vals = parse_mtx_data(diff_data_str, wea_duration, density)
-    mtx_data = (dir_vals, diff_vals)
+    # execute the Radiance gendaymtx command
+    dir_vals, diff_vals = run_gendaymtx(wea_file, wea_duration, density)
+
+    # if there's a second wea, then use it to compute radiation harm
+    if wea_obj2 is not None:
+        wea_file2 = '{}_harm.wea'.format(wea_file.replace('.wea', ''))
+        wea_obj2.write(wea_file2)
+        dir_vals2, diff_vals2 = run_gendaymtx(wea_file2, wea_duration, density)
+        dir_vals = [db - dh for db, dh in zip(dir_vals, dir_vals2)]
+        diff_vals = [db - dh for db, dh in zip(diff_vals, diff_vals2)]
+
     # set the session state variables
+    mtx_data = (dir_vals, diff_vals)
     st.session_state.sky_matrix = mtx_data
 
 
@@ -208,11 +262,15 @@ def compute_intersection_matrix(
 
 def run_simulation(
     target_folder, user_id, sky_file_path, run_period, high_sky_density, avg_irr,
-    study_mesh, context_geo, offset_dist, ground_reflectance, north
+    use_benefit, bal_temp, study_mesh, context_geo, offset_dist,
+    ground_reflectance, north
 ):
     """Run a simulation to get incident radiation."""
     button_holder = st.empty()
-    auto_rerun = st.checkbox(label='Automatic Re-run', value=False)
+    run_help = 'Check to have the radiation calculation automatically re-run every ' \
+        'time one of the inputs is changed. This option should only be used for ' \
+        'simpler models where the simulation time is relatively fast.'
+    auto_rerun = st.checkbox(label='Automatic Re-run', value=False, help=run_help)
     # check to be sure there is a model
     if not sky_file_path or not study_mesh or not context_geo or \
             st.session_state.radiation_values is not None:
@@ -222,7 +280,8 @@ def run_simulation(
     if auto_rerun or button_holder.button('Compute Radiation'):
         # get the values for the radiation of the view sphere
         if st.session_state.sky_matrix is None:
-            compute_sky_matrix(sky_file_path, run_period, high_sky_density, avg_irr)
+            compute_sky_matrix(sky_file_path, run_period, high_sky_density,
+                               avg_irr, use_benefit, bal_temp)
         mtx = st.session_state.sky_matrix
         total_sky_rad = [dir_rad + dif_rad for dir_rad, dif_rad in zip(mtx[0], mtx[1])]
         ground_value = (sum(total_sky_rad) / len(total_sky_rad)) * ground_reflectance
