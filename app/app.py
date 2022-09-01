@@ -45,6 +45,7 @@ def main(platform):
         st.session_state.target_folder, st.session_state.user_id,
         st.session_state.sky_file_path, st.session_state.run_period,
         st.session_state.high_sky_density, st.session_state.average_irradiance,
+        st.session_state.use_benefit, st.session_state.balance_temperature,
         st.session_state.simulation_geo, context_geo, offset_distance,
         st.session_state.ground_reflectance, st.session_state.north
     )
