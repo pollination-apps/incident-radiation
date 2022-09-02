@@ -112,10 +112,16 @@ def new_model():
         hbjson_data = st.session_state['hbjson_data']['hbjson']
         hb_model = Model.from_dict(hbjson_data)
         st.session_state.hb_model = hb_model
-        geo_meshes = [sg.mesh for sg in hb_model.properties.radiance.sensor_grids]
+        geo_meshes = [sg.mesh for sg in hb_model.properties.radiance.sensor_grids
+                      if sg.mesh is not None]
+        if len(geo_meshes) == 0:
+            raise ValueError(
+                'Model contains no sensor grids with meshes. '
+                'Sensor grids with meshes are required to use this app.')
         st.session_state.simulation_geo = Mesh3D.join_meshes(geo_meshes)
         st.session_state.context_geo = \
-            [obj.geometry for obj in hb_model.faces + hb_model.shades]
+            [obj.punched_geometry for obj in hb_model.faces] + \
+            [obj.geometry for obj in hb_model.shades]
 
 
 def get_model(column):

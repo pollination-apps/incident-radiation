@@ -31,8 +31,6 @@ def main(platform):
     in_container = st.container()  # container to hold the inputs
     get_inputs(platform, in_container)
     st.markdown("""---""")  # horizontal divider line between input and output
-    if platform not in ('rhino', 'sketchup'):
-        out_container = st.container()  # container to eventually hold the results
 
     # run the simulation
     offset_distance = 0.1 if platform in ('rhino', 'sketchup') else 0
@@ -51,8 +49,7 @@ def main(platform):
     )
 
     # load the results
-    if platform in ('rhino', 'sketchup'):
-        out_container = st.container()  # container to eventually hold the results
+    out_container = st.container()  # container to hold the results
     display_results(
         platform, st.session_state.target_folder, st.session_state.user_id,
         st.session_state.radiation_values, st.session_state.average_irradiance,
