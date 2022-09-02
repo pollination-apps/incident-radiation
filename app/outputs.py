@@ -118,7 +118,7 @@ def display_results(host, target_folder, user_id, rad_values, avg_irr, container
     """
     # test if the results should be loaded to the CAD environment
     in_ap_display = False
-    if host in ('rhino', 'sketchup'):
+    if host in ('rhino', 'sketchup', 'revit'):
         ap_dis_help = 'Check to have the results display through a viewer in the ' \
             'application instead of being pushed to the CAD environment.'
         in_ap_display = container.checkbox(
