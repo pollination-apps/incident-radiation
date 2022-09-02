@@ -135,7 +135,8 @@ def new_geometry():
     st.session_state.radiation_values = None
     st.session_state.vtk_path = None
     # load the model object from the file data
-    if 'geometry' in st.session_state['geometry_data']:
+    if st.session_state['geometry_data'] is not None and \
+            'geometry' in st.session_state['geometry_data']:
         geo_data = st.session_state['geometry_data']['geometry']
         if geo_data is None:
             st.session_state.simulation_geo = None
@@ -290,7 +291,7 @@ def get_inputs(host: str, container):
             'the input Geometry will be subdivided. The smaller the grid size, ' \
             'the higher the resolution and the longer the calculation will take.'
         in_grid_size = m_col_last.number_input(
-            label='Grid Size', min_value=0.0, value=1.0, step=1.0, help=grid_help)
+            label='Grid Size', min_value=0.001, value=1.0, step=0.25, help=grid_help)
         if in_grid_size != st.session_state.grid_size:
             st.session_state.grid_size = in_grid_size
             new_geometry()
