@@ -33,7 +33,6 @@ def main(platform):
     st.markdown("""---""")  # horizontal divider line between input and output
 
     # run the simulation
-    offset_distance = 0.1 if platform in ('rhino', 'sketchup') else 0
     context_geo = []
     if st.session_state.sim_context_geo is not None:
         context_geo.extend(st.session_state.sim_context_geo)
@@ -44,7 +43,7 @@ def main(platform):
         st.session_state.sky_file_path, st.session_state.run_period,
         st.session_state.high_sky_density, st.session_state.average_irradiance,
         st.session_state.use_benefit, st.session_state.balance_temperature,
-        st.session_state.simulation_geo, context_geo, offset_distance,
+        st.session_state.simulation_geo, context_geo, st.session_state.offset_distance,
         st.session_state.ground_reflectance, st.session_state.north
     )
 

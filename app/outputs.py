@@ -161,7 +161,8 @@ def display_results(host, target_folder, user_id, rad_values, avg_irr, container
             with container:
                 send_results(results=viz_set.to_dict(), key='rad-grids',
                              option='subscribe-preview', options=options)
-                report_total_radiation(rad_values, container, avg_irr)
+                u_conv = conversion_factor_to_meters(st.session_state.unit_system) ** 2
+                report_total_radiation(rad_values, container, avg_irr, u_conv)
 
     # draw the VTK visualization
     if host == 'web' or in_ap_display:  # write the radiation values to files

@@ -1,5 +1,6 @@
 """Functions for initializing inputs and formatting them for simulation"""
 import uuid
+import json
 from pathlib import Path
 
 import streamlit as st
@@ -8,7 +9,15 @@ from ladybug_geometry.geometry3d import Face3D, Mesh3D, Polyface3D
 from ladybug.analysisperiod import AnalysisPeriod
 from honeybee.model import Model
 
-from pollination_streamlit_io import get_hbjson, get_geometry
+from pollination_streamlit_io import get_hbjson, get_geometry, manage_settings
+
+GRID_SIZES = {
+    'Meters': (1.0, 0.25),
+    'Millimeters': (1000.0, 250.0),
+    'Feet': (3.0, 1.0),
+    'Inches': (36.0, 12.0),
+    'Centimeters': (100.0, 25.0)
+}
 
 
 def initialize():
@@ -48,6 +57,10 @@ def initialize():
         st.session_state.ground_reflectance = 0.2
     if 'grid_size' not in st.session_state:  # used only in rhino and sketchup
         st.session_state.grid_size = 1.0
+    if 'offset_distance' not in st.session_state:  # used only in rhino and sketchup
+        st.session_state.offset_distance = 0
+    if 'unit_system' not in st.session_state:  # used only in rhino and sketchup
+        st.session_state.unit_system = 'Meters'
     if 'intersection_matrix' not in st.session_state:
         st.session_state.intersection_matrix = None
     # output session
@@ -293,14 +306,37 @@ def get_inputs(host: str, container):
     # get the input geometry
     if host in ('rhino', 'sketchup'):  # get geometry and context individually
         m_col_1, m_col_2, m_col_last = container.columns(3)
+        # sense the units of the CAD environment
+        settings_dict = manage_settings(key='default_settings', settings={})
+        if settings_dict is not None:
+            if isinstance(settings_dict, str):
+                settings_dict = json.loads(settings_dict)
+            st.session_state.unit_system = settings_dict['units']
+            g_size, g_step = GRID_SIZES[st.session_state.unit_system]
+        else:
+            g_size, g_step = GRID_SIZES['Meters']
+        # create an input component for the grid size
         grid_help = 'Number in model units for the size of grid cells at which ' \
             'the input Geometry will be subdivided. The smaller the grid size, ' \
             'the higher the resolution and the longer the calculation will take.'
         in_grid_size = m_col_last.number_input(
-            label='Grid Size', min_value=0.001, value=1.0, step=0.25, help=grid_help)
+            label='Grid Size', min_value=0.001,
+            value=g_size, step=g_step, help=grid_help)
         if in_grid_size != st.session_state.grid_size:
             st.session_state.grid_size = in_grid_size
             new_geometry()
+        # create an input component for the offset distance
+        off_help = 'Number in model units for the distance to move points from ' \
+            'the surfaces of the input geometry.'
+        in_off_dist = m_col_last.number_input(
+            label='Offset Distance', min_value=0.001,
+            value=g_size, step=g_step, help=off_help)
+        if in_off_dist != st.session_state.offset_distance:
+            st.session_state.offset_distance = in_off_dist
+            st.session_state.intersection_matrix = None
+            st.session_state.radiation_values = None
+            st.session_state.vtk_path = None
+        # add buttons to get the geometry and context
         get_study_geometry(m_col_1)
         get_context_geometry(m_col_2)
     else:
