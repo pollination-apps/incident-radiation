@@ -124,12 +124,12 @@ def display_results(host, target_folder, user_id, rad_values, avg_irr, container
         in_ap_display = container.checkbox(
             label='Display Results in App', value=False, help=ap_dis_help)
         options = {
-            'add': True,
-            'delete': False,
-            'preview': False,
-            'clear': False,
-            'subscribe-preview': True
-        }
+                'add': True,
+                'delete': host == 'revit',
+                'preview': False,
+                'clear': False,
+                'subscribe-preview': True
+            }
         if not rad_values or in_ap_display:
             with container:
                 send_results(results=[], key='rad-grids',
