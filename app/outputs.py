@@ -124,12 +124,12 @@ def display_results(host, target_folder, user_id, rad_values, avg_irr, container
         in_ap_display = container.checkbox(
             label='Display Results in App', value=False, help=ap_dis_help)
         options = {
-                'add': True,
-                'delete': host == 'revit',
-                'preview': False,
-                'clear': False,
-                'subscribe-preview': True
-            }
+            'add': True,
+            'delete': host == 'revit',
+            'preview': False,
+            'clear': False,
+            'subscribe-preview': True
+        }
         if not rad_values or in_ap_display:
             with container:
                 send_results(results=[], key='rad-grids',
@@ -156,8 +156,9 @@ def display_results(host, target_folder, user_id, rad_values, avg_irr, container
             l_par.colors = color_set
             viz_data = VisualizationData(
                 rad_values, l_par, data_type=d_type, unit=unit)
-            a_geo = AnalysisGeometry([st.session_state.simulation_geo], [viz_data])
-            viz_set = VisualizationSet(a_geo)
+            a_geo = AnalysisGeometry(
+                'Analysis_Geometry', [st.session_state.simulation_geo], [viz_data])
+            viz_set = VisualizationSet('Radiation_Study', [a_geo])
             with container:
                 send_results(results=viz_set.to_dict(), key='rad-grids',
                              option='subscribe-preview', options=options)
