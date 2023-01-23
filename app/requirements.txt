@@ -1,5 +1,5 @@
 streamlit_vtkjs>=0.2.0
 honeybee-vtk>=0.38.4
-pollination-streamlit-viewer==0.4.5
-pollination-streamlit-io>=0.45.2
-ladybug-display>=0.4.0
+pollination-streamlit-viewer==0.4.7
+pollination-streamlit-io>=0.49.0
+ladybug-display>=0.9.0
