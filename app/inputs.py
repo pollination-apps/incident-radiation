@@ -352,8 +352,7 @@ def get_inputs(host: str, container):
         step=0.05, help=ref_help)
     if in_g_ref != st.session_state.ground_reflectance:
         st.session_state.ground_reflectance = in_g_ref
-        st.session_state.radiation_values = None  # reset to have results recomputed
-        st.session_state.vtk_path = None  # reset to have results recomputed
+        new_sky_matrix()
 
     # get the input file to generate the sky
     w_col_1, w_col_2 = container.columns([2, 1])

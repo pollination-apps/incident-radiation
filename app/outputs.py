@@ -1,6 +1,5 @@
 """Functions for processing outputs."""
 import os
-import json
 import pathlib
 import streamlit as st
 
@@ -10,84 +9,12 @@ from ladybug.legend import LegendParameters
 from ladybug.datatype.energyintensity import Radiation
 from ladybug.datatype.energyflux import Irradiance
 from ladybug_display.visualization import VisualizationData, AnalysisGeometry, \
-    VisualizationSet
+    ContextGeometry, VisualizationSet
 from honeybee.units import conversion_factor_to_meters
-from honeybee.shade import Shade
-from honeybee.model import Model
-from honeybee_radiance.sensorgrid import SensorGrid
-from honeybee_vtk.model import Model as VTKModel, SensorGridOptions, DisplayMode
+from ladybug_vtk.visualization_set import VisualizationSet as VTKVisualizationSet
+
 from pollination_streamlit_io import send_results
 from pollination_streamlit_viewer import viewer
-
-
-def write_result_files(res_folder, hb_model, rad_values):
-    """Write the radiation results to files."""
-    grids_info, st_ind = [], 0
-    for grid in hb_model.properties.radiance.sensor_grids:
-        grids_info.append(grid.info_dict(hb_model))
-        grid_file = os.path.join(res_folder, '{}.res'.format(grid.identifier))
-        with open(grid_file, 'w') as gf:
-            gf.write('\n'.join(
-                str(v) for v in rad_values[st_ind: st_ind + grid.count]))
-        st_ind += grid.count
-    grids_info_file = os.path.join(res_folder, 'grids_info.json')
-    with open(grids_info_file, 'w', encoding='utf-8') as fp:
-        json.dump(grids_info, fp, indent=2, ensure_ascii=False)
-
-
-def get_vtk_config(res_folder: pathlib.Path, values, avg_irr) -> str:
-    """Write Incident Radiation config to a folder."""
-    if st.session_state.override_min_max:
-        min_val = st.session_state.legend_min
-        max_val = st.session_state.legend_max
-    elif st.session_state.use_benefit:
-        extrema = max(abs(min(values)), max(values))
-        min_val, max_val = -extrema, extrema
-    else:
-        min_val, max_val = min(values), max(values)
-    color_set = 'benefit_harm' if st.session_state.use_benefit else 'original'
-    rev_colorset = True if st.session_state.use_benefit else False
-    if min_val == max_val == 0:
-        max_val = 1
-    unit = 'W/m2' if avg_irr else 'kWh/m2'
-    cfg = {
-        "data": [
-            {
-                "identifier": "Incident Radiation",
-                "object_type": "grid",
-                "unit": unit,
-                "path": res_folder.as_posix(),
-                "hide": False,
-                "legend_parameters": {
-                    "hide_legend": False,
-                    "color_set": color_set,
-                    "reverse_colorset": rev_colorset,
-                    "min": min_val,
-                    "max": max_val,
-                    "label_parameters": {
-                        "color": [34, 247, 10],
-                        "size": 0,
-                        "bold": True
-                    }
-                }
-            }
-        ]
-    }
-    config_file = res_folder.parent.joinpath('config.json')
-    config_file.write_text(json.dumps(cfg))
-    return config_file.as_posix()
-
-
-def get_vtk_model_result(simulation_folder: pathlib.Path, cfg_file, hb_model, container):
-    """Get the viewer with radiation results"""
-    hbjson_path = hb_model.to_hbjson(hb_model.identifier, simulation_folder)
-    vtk_model = VTKModel.from_hbjson(hbjson_path, SensorGridOptions.Mesh)
-    vtk_result_path = vtk_model.to_vtkjs(
-        folder=simulation_folder.resolve(),
-        config=cfg_file,
-        model_display_mode=DisplayMode.Wireframe,
-        name=hb_model.identifier)
-    st.session_state.vtk_path = vtk_result_path
 
 
 def report_total_radiation(rad_values, container, avg_irr, unit_conv=1):
@@ -116,7 +43,34 @@ def display_results(host, target_folder, user_id, rad_values, avg_irr, container
             of irradiance in W/m2.
         container: The streamlit container to which the viewer will be added.
     """
-    # test if the results should be loaded to the CAD environment
+    # create the visualization set object with the results if there are values
+    if rad_values:
+        d_type = Irradiance('Incident Irradiance') if avg_irr \
+            else Radiation('Incident Radiation')
+        unit = 'W/m2' if avg_irr else 'kWh/m2'
+        if st.session_state.override_min_max:
+            min_val = st.session_state.legend_min
+            max_val = st.session_state.legend_max
+        elif st.session_state.use_benefit:
+            extrema = max(abs(min(rad_values)), max(rad_values))
+            min_val, max_val = -extrema, extrema
+        else:
+            min_val, max_val = min(rad_values), max(rad_values)
+        color_set = reversed(Colorset.benefit_harm()) \
+            if st.session_state.use_benefit else Colorset.original()
+        l_par = LegendParameters(
+            min=min_val, max=max_val, title=unit,
+            segment_count=st.session_state.legend_seg_count,
+            base_plane=Plane(o=Point3D(10, 50, 0)))
+        l_par.decimal_count = 1
+        l_par.colors = color_set
+        viz_data = VisualizationData(
+            rad_values, l_par, data_type=d_type, unit=unit)
+        a_geo = AnalysisGeometry(
+            'Analysis_Geometry', [st.session_state.simulation_geo], [viz_data])
+        viz_set = VisualizationSet('Radiation_Study', [a_geo])
+
+    # send the results to the CAD environment if applicable
     in_ap_display = False
     if host in ('rhino', 'sketchup', 'revit'):
         ap_dis_help = 'Check to have the results display through a viewer in the ' \
@@ -135,30 +89,6 @@ def display_results(host, target_folder, user_id, rad_values, avg_irr, container
                 send_results(results=[], key='rad-grids',
                              option='subscribe-preview', options=options)
         else:
-            d_type = Irradiance('Incident Irradiance') if avg_irr \
-                else Radiation('Incident Radiation')
-            unit = 'W/m2' if avg_irr else 'kWh/m2'
-            if st.session_state.override_min_max:
-                min_val = st.session_state.legend_min
-                max_val = st.session_state.legend_max
-            elif st.session_state.use_benefit:
-                extrema = max(abs(min(rad_values)), max(rad_values))
-                min_val, max_val = -extrema, extrema
-            else:
-                min_val, max_val = min(rad_values), max(rad_values)
-            color_set = reversed(Colorset.benefit_harm()) \
-                if st.session_state.use_benefit else Colorset.original()
-            l_par = LegendParameters(
-                min=min_val, max=max_val, title=unit,
-                segment_count=st.session_state.legend_seg_count,
-                base_plane=Plane(o=Point3D(10, 50, 0)))
-            l_par.decimal_count = 1
-            l_par.colors = color_set
-            viz_data = VisualizationData(
-                rad_values, l_par, data_type=d_type, unit=unit)
-            a_geo = AnalysisGeometry(
-                'Analysis_Geometry', [st.session_state.simulation_geo], [viz_data])
-            viz_set = VisualizationSet('Radiation_Study', [a_geo])
             with container:
                 send_results(results=viz_set.to_dict(), key='rad-grids',
                              option='subscribe-preview', options=options)
@@ -169,28 +99,32 @@ def display_results(host, target_folder, user_id, rad_values, avg_irr, container
     if host == 'web' or in_ap_display:  # write the radiation values to files
         if not rad_values:
             return
+        # if the visualization set is displaying in the viewer, add the context
+        if st.session_state.context_geo is not None:
+            geo_obj = []
+            for face3d in st.session_state.context_geo:
+                for seg in face3d.boundary_segments:
+                    geo_obj.append(seg)
+                if face3d.has_holes:
+                    for hole in face3d.hole_segments:
+                        geo_obj.extend(hole)
+            con_geo = ContextGeometry('ContextShade', geo_obj)
+            con_geo.display_name = 'Context Shade'
+            viz_set.add_geometry(con_geo)
         # report the total radiation (or average irradiance)
         hb_model = st.session_state.hb_model
-        if hb_model is None:  # create the honeybee model
-            shades, con_geo = [], st.session_state.context_geo
-            if con_geo is not None:
-                for i, s_geo in enumerate(con_geo):
-                    shades.append(Shade('Shade_{}'.format(i), s_geo))
-            s_grid = SensorGrid.from_mesh3d(
-                'simulation_geometry', st.session_state.simulation_geo)
-            hb_model = Model('simulation_model', orphaned_shades=shades)
-            hb_model.properties.radiance.sensor_grids = [s_grid]
-        unit_conv = conversion_factor_to_meters(hb_model.units) ** 2
+        unit_conv = conversion_factor_to_meters(hb_model.units) ** 2 \
+            if hb_model is not None else \
+            conversion_factor_to_meters(st.session_state.unit_system) ** 2
         report_total_radiation(rad_values, container, avg_irr, unit_conv)
-        # set up the result folders
-        res_folder = os.path.join(target_folder, 'data', user_id, 'results')
-        if not os.path.isdir(res_folder):
-            os.mkdir(res_folder)
-        res_path = pathlib.Path(res_folder).resolve()
+        # display the results in the 3D viewer
         if st.session_state.vtk_path is None:
-            write_result_files(res_folder, hb_model, rad_values)
-            cfg_file = get_vtk_config(res_path, rad_values, avg_irr)
-            get_vtk_model_result(res_path.parent, cfg_file, hb_model, container)
+            result_folder = os.path.join(target_folder, 'data', user_id)
+            if not os.path.isdir(result_folder):
+                os.mkdir(result_folder)
+            vtk_vs = VTKVisualizationSet.from_visualization_set(viz_set)
+            st.session_state.vtk_path = vtk_vs.to_vtkjs(
+                folder=result_folder, name='vis_set')
         vtk_path = st.session_state.vtk_path
         with container:
             viewer(content=pathlib.Path(vtk_path).read_bytes(), key='vtk_res_model')
