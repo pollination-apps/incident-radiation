@@ -1,4 +1,4 @@
-FROM ladybugtools/honeybee-radiance:1.64.46 as base
+FROM ladybugtools/ladybug-radiance:0.2.0 as base
 
 WORKDIR /home/ladybugbot/app
 COPY . .
