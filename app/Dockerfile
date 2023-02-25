@@ -7,7 +7,7 @@ USER root
 
 RUN apt-get update \
     && apt-get install ffmpeg libsm6 libxext6 curl unzip -y \
-    && pip3 install -r requirements.txt || echo no requirements.txt file \
+    && pip3 install -r requirements.txt \
     && chown -R ladybugbot /home/ladybugbot/app
 
 USER ladybugbot
