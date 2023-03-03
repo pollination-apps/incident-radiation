@@ -121,7 +121,7 @@ def display_results(host, target_folder, user_id, rad_values, avg_irr, container
         if st.session_state.vtk_path is None:
             result_folder = os.path.join(target_folder, 'data', user_id)
             if not os.path.isdir(result_folder):
-                os.mkdir(result_folder)
+                os.makedirs(result_folder)
             vtk_vs = VTKVisualizationSet.from_visualization_set(viz_set)
             st.session_state.vtk_path = vtk_vs.to_vtkjs(
                 folder=result_folder, name='vis_set')
