@@ -102,9 +102,9 @@ jobs:
           TAG=$(echo "${TAG:?}" | sed 's/[[:space:]]//g')
           TAG=${TAG%%-*}
 
-          echo pollination-apps deploy app --tag $TAG --owner ladybug-tools --name "${{needs.generate-app-name.outputs.app-name}}" --public --message "${{github.event.commits[0].message}}" 
+          echo pollination-apps deploy app --tag $TAG --public --message "${{github.event.commits[0].message}}" 
 
-          pollination-apps deploy app --tag $TAG --owner ladybug-tools --name "${{needs.generate-app-name.outputs.app-name}}" --public --message "${{github.event.commits[0].message}}" 
+          pollination-apps deploy app --tag $TAG --public --message "${{github.event.commits[0].message}}" 
 
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
